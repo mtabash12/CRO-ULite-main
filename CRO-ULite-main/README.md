@@ -1,6 +1,5 @@
-# WSN Project: Modeling and Benchmarking LEACH and CRO with Edge Deployment
 
-This project simulates a Wireless Sensor Network (WSN) with 100 nodes. It applies Principal Component Analysis (PCA), K-means clustering, Artificial Neural Networks (ANN), and Swarm Optimization (BEA-SSA, TSA) for energy-efficient Cluster Head (CH) selection.
+ CRO-Ulite uses a simplified three-stage pipeline: PCA → K-Means → CRO. The experiments reported in the paper correspond to this final configuration.
 
 ## How to Install and Run the Project
 
@@ -25,12 +24,7 @@ This project simulates a Wireless Sensor Network (WSN) with 100 nodes. It applie
     - To run the project, simply execute:
       ```bash
       python3 src/main.py
-      ```
-
-4. **Edge Deployment (Raspberry Pi Pico)**:
-    - Transfer the quantized model (`model_quantized.tflite`) to the Raspberry Pi Pico.
-    - Set up TensorFlow Lite Micro and INA219 for power measurement.
-    - Run the model on Raspberry Pi Pico and measure latency, inference time, and energy consumption.
+      
 
 5. **Results**:
     - After running the simulation, the network topology and benchmark results will be saved in the `outputs` folder.
