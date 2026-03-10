@@ -78,7 +78,7 @@ The proposed framework significantly improves network lifetime and energy effici
 - **27.6% improvement over LEACH + PCA + K-Means**
 
 ---
-
+This repository contains the implementation used in the CRO-Ulite research paper.
 # Repository Structure
 
 
