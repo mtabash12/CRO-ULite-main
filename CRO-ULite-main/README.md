@@ -72,11 +72,6 @@ The proposed framework significantly improves network lifetime and energy effici
 | Energy @R500           | 26.85 J | 26.03 J          | **25.17 J** |
 
 
- 
-
-
-
-
 **Improvements achieved by CRO-Ulite:**
 
 - **37.7% improvement over LEACH**
@@ -128,18 +123,5 @@ This ensures reproducible simulation results.
 
 ---
 
-# Citation
-
-If you use this repository in your research, please cite:
 
 
-Author,
-"CRO-Ulite: Energy-Efficient Cluster Head Selection for Wireless Sensor Networks",
-2025.
-
-
----
-
-# License
-
-This project is intended for **academic and research purposes**.
