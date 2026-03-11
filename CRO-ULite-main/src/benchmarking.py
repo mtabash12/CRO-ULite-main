@@ -1,88 +1,118 @@
-
-import numpy as np
-import matplotlib.pyplot as plt
-import os
 import copy
+import numpy as np
 
-def simulate_network_lifetime(nodes, protocol, max_rounds=100, G=None, positions=None, transmission_range=100):
+
+def simulate_network_lifetime(
+    nodes,
+    protocol,
+    max_rounds=100,
+    G=None,
+    positions=None,
+    transmission_range=100
+):
     """
-    Simulate network lifetime using the specified protocol.
-
-    Args:
-        nodes: List of node IDs
-        protocol: Protocol function to use (e.g., leach_protocol, cro_protocol)
-        max_rounds: Maximum number of rounds to simulate
-        G: NetworkX graph representing the network
-        positions: Dictionary mapping node IDs to (x, y) coordinates
-        transmission_range: Maximum transmission range
+    Simulate the network over multiple rounds using the specified protocol.
 
     Returns:
-        Dictionary containing simulation results:
-        - rounds: List of round numbers
-        - alive_nodes: List of number of alive nodes in each round
-        - total_energy: List of total energy in the network in each round
-        - lifetime: Number of rounds until first node death
+        dict with:
+        - rounds
+        - alive_nodes
+        - total_energy
+        - fnd: first node death round
+        - hnd: half node death round
+        - lnd: last node death round
     """
-    # Make a deep copy of the graph to avoid modifying the original
-    G_copy = copy.deepcopy(G)
-
     results = {
-        'rounds': [],
-        'alive_nodes': [],
-        'total_energy': [],
-        'lifetime': max_rounds
+        "rounds": [],
+        "alive_nodes": [],
+        "total_energy": [],
+        "fnd": None,
+        "hnd": None,
+        "lnd": None
     }
 
+    total_nodes = len(nodes)
+    half_nodes_threshold = total_nodes / 2
+
     for round_num in range(max_rounds):
-        # Record data before running the protocol
-        results['rounds'].append(round_num)
-        alive_nodes = [node for node in nodes if G_copy.nodes[node]['energy'] > 0]
-        results['alive_nodes'].append(len(alive_nodes))
-        total_energy = sum(G_copy.nodes[node]['energy'] for node in nodes)
-        results['total_energy'].append(total_energy)
+        # Run protocol first
+        protocol(nodes, positions, transmission_range, G)
 
-        # Run the protocol
-        cluster_heads = protocol(nodes, positions, transmission_range, G_copy)
+        # Clamp negative energies if needed
+        for node in nodes:
+            if G.nodes[node]["energy"] < 0:
+                G.nodes[node]["energy"] = 0
 
-        # Check for dead nodes
-        dead_nodes = [node for node in nodes if G_copy.nodes[node]['energy'] == 0]
-        if dead_nodes and round_num < results['lifetime']:
-            results['lifetime'] = round_num
-            print(f"Network lifetime reached after {round_num} rounds.")
+        # Record state after protocol execution
+        alive_nodes = [node for node in nodes if G.nodes[node]["energy"] > 0]
+        dead_nodes = total_nodes - len(alive_nodes)
+        total_energy = sum(G.nodes[node]["energy"] for node in nodes)
 
-        # If all nodes are dead, break
-        if len(dead_nodes) == len(nodes):
+        results["rounds"].append(round_num + 1)
+        results["alive_nodes"].append(len(alive_nodes))
+        results["total_energy"].append(total_energy)
+
+        # First Node Dies
+        if results["fnd"] is None and dead_nodes >= 1:
+            results["fnd"] = round_num + 1
+
+        # Half Nodes Die
+        if results["hnd"] is None and dead_nodes >= half_nodes_threshold:
+            results["hnd"] = round_num + 1
+
+        # Last Node Dies
+        if dead_nodes == total_nodes:
+            results["lnd"] = round_num + 1
             break
+
+    # If no death event occurred within max_rounds
+    if results["fnd"] is None:
+        results["fnd"] = max_rounds
+    if results["hnd"] is None:
+        results["hnd"] = max_rounds
+    if results["lnd"] is None:
+        results["lnd"] = max_rounds
 
     return results
 
-def compare_protocols(nodes, protocols, protocol_names, max_rounds=100, G=None, positions=None, transmission_range=100):
+
+def compare_protocols(
+    nodes,
+    protocols,
+    protocol_names,
+    max_rounds=100,
+    G=None,
+    positions=None,
+    transmission_range=100
+):
     """
-    Compare multiple protocols by simulating network lifetime for each.
-
-    Args:
-        nodes: List of node IDs
-        protocols: List of protocol functions to compare
-        protocol_names: List of names for the protocols (for plotting)
-        max_rounds: Maximum number of rounds to simulate
-        G: NetworkX graph representing the network
-        positions: Dictionary mapping node IDs to (x, y) coordinates
-        transmission_range: Maximum transmission range
-
-    Returns:
-        Dictionary containing comparison results:
-        - protocol_results: Dictionary mapping protocol names to their simulation results
+    Compare multiple protocols using the same initial network state.
     """
     comparison_results = {
-        'protocol_results': {}
+        "protocol_results": {}
     }
 
     for protocol, name in zip(protocols, protocol_names):
         print(f"Simulating {name}...")
-        # Make a deep copy of the graph for each protocol
+
         G_copy = copy.deepcopy(G)
-        results = simulate_network_lifetime(nodes, protocol, max_rounds, G_copy, positions, transmission_range)
-        comparison_results['protocol_results'][name] = results
-        print(f"{name} lifetime: {results['lifetime']} rounds")
+
+        results = simulate_network_lifetime(
+            nodes=nodes,
+            protocol=protocol,
+            max_rounds=max_rounds,
+            G=G_copy,
+            positions=positions,
+            transmission_range=transmission_range
+        )
+
+        comparison_results["protocol_results"][name] = results
+
+        print(
+            f"{name}: "
+            f"FND={results['fnd']}, "
+            f"HND={results['hnd']}, "
+            f"LND={results['lnd']}"
+        )
 
     return comparison_results
