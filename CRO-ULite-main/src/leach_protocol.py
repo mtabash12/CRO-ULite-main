@@ -2,45 +2,34 @@ import random
 import numpy as np
 
 from src.energy_model import (
-    calculate_energy_consumption,
+    calculate_transmission_energy,
+    calculate_reception_energy,
+    calculate_aggregation_energy,
     update_energy,
     apply_pca
 )
 from src.clustering import kmeans_cluster_nodes
+from src.network_setup import BASE_STATION
 
 
-# =========================
-# Configuration
-# =========================
-BASE_STATION = (50, 175)   # same as your network setup
-CH_RATIO = 0.2             # 20% of alive nodes become cluster heads
-E_RX = 5e-8                # energy for receiving one aggregated unit
-E_DA = 5e-9                # data aggregation energy per received member packet
+CH_RATIO = 0.2
 
 
 def euclidean_distance(p1, p2):
-    """Compute Euclidean distance between two 2D points."""
     return np.linalg.norm(np.array(p1) - np.array(p2))
 
 
 def safe_update_energy(node, energy_spent, G):
-    """
-    Update node energy and clamp it to zero if numerical drift occurs.
-    """
     update_energy(node, energy_spent, G)
     if G.nodes[node]["energy"] < 0:
         G.nodes[node]["energy"] = 0
 
 
 def get_alive_nodes(nodes, G):
-    """Return only nodes with positive residual energy."""
     return [node for node in nodes if G.nodes[node]["energy"] > 0]
 
 
 def select_random_cluster_heads(alive_nodes, ratio=CH_RATIO):
-    """
-    Randomly select cluster heads from alive nodes.
-    """
     if not alive_nodes:
         return []
 
@@ -50,12 +39,6 @@ def select_random_cluster_heads(alive_nodes, ratio=CH_RATIO):
 
 
 def assign_nodes_to_cluster_heads(alive_nodes, cluster_heads, positions):
-    """
-    Assign each non-CH alive node to its nearest cluster head.
-
-    Returns:
-        clusters: dict mapping CH -> list of member nodes
-    """
     clusters = {ch: [] for ch in cluster_heads}
 
     for node in alive_nodes:
@@ -71,59 +54,37 @@ def assign_nodes_to_cluster_heads(alive_nodes, cluster_heads, positions):
     return clusters
 
 
-def member_to_ch_energy(clusters, positions, transmission_range, G):
-    """
-    Energy spent by member nodes transmitting data to their assigned CH.
-    """
+def member_to_ch_energy(clusters, positions, G):
     for ch, members in clusters.items():
         for node in members:
             distance = euclidean_distance(positions[node], positions[ch])
-            energy_spent = calculate_energy_consumption(distance, transmission_range)
+            energy_spent = calculate_transmission_energy(distance)
             safe_update_energy(node, energy_spent, G)
 
 
 def ch_receive_and_aggregate_energy(clusters, G):
-    """
-    Energy spent by each CH receiving packets from members and aggregating them.
-    """
     for ch, members in clusters.items():
         if G.nodes[ch]["energy"] <= 0:
             continue
 
-        receive_cost = len(members) * E_RX
-        aggregation_cost = len(members) * E_DA
-        total_ch_processing_cost = receive_cost + aggregation_cost
-
-        safe_update_energy(ch, total_ch_processing_cost, G)
+        receive_cost = len(members) * calculate_reception_energy()
+        aggregation_cost = len(members) * calculate_aggregation_energy()
+        safe_update_energy(ch, receive_cost + aggregation_cost, G)
 
 
-def ch_to_bs_energy(cluster_heads, positions, transmission_range, G, base_station=BASE_STATION):
-    """
-    Energy spent by each cluster head transmitting aggregated data to the BS.
-    """
+def ch_to_bs_energy(cluster_heads, positions, G, base_station=BASE_STATION):
     for ch in cluster_heads:
         if G.nodes[ch]["energy"] <= 0:
             continue
 
         distance_to_bs = euclidean_distance(positions[ch], base_station)
-        energy_spent = calculate_energy_consumption(distance_to_bs, transmission_range)
+        energy_spent = calculate_transmission_energy(distance_to_bs)
         safe_update_energy(ch, energy_spent, G)
 
 
 def leach_protocol(nodes, positions, transmission_range, G):
-    """
-    Simplified LEACH baseline.
+    del transmission_range
 
-    Steps:
-    1. Select cluster heads randomly from alive nodes.
-    2. Assign alive member nodes to nearest CH.
-    3. Members transmit to CH.
-    4. CH receives and aggregates data.
-    5. CH transmits aggregated data to BS.
-
-    Returns:
-        cluster_heads: list of selected cluster heads
-    """
     alive_nodes = get_alive_nodes(nodes, G)
     if not alive_nodes:
         return []
@@ -134,30 +95,16 @@ def leach_protocol(nodes, positions, transmission_range, G):
 
     clusters = assign_nodes_to_cluster_heads(alive_nodes, cluster_heads, positions)
 
-    member_to_ch_energy(clusters, positions, transmission_range, G)
+    member_to_ch_energy(clusters, positions, G)
     ch_receive_and_aggregate_energy(clusters, G)
-    ch_to_bs_energy(cluster_heads, positions, transmission_range, G, base_station=BASE_STATION)
+    ch_to_bs_energy(cluster_heads, positions, G, base_station=BASE_STATION)
 
     return cluster_heads
 
 
 def leach_with_pca_kmeans(nodes, positions, transmission_range, G):
-    """
-    Modified LEACH using PCA + K-means for cluster formation and
-    highest-energy node in each cluster as the cluster head.
+    del transmission_range
 
-    Steps:
-    1. Build feature matrix from alive nodes only.
-    2. Apply PCA.
-    3. Cluster nodes using K-means.
-    4. Select the highest-energy node in each cluster as CH.
-    5. Members transmit to CH.
-    6. CH receives and aggregates data.
-    7. CH transmits aggregated data to BS.
-
-    Returns:
-        cluster_heads: list of selected cluster heads
-    """
     alive_nodes = get_alive_nodes(nodes, G)
     if not alive_nodes:
         return []
@@ -189,31 +136,18 @@ def leach_with_pca_kmeans(nodes, positions, transmission_range, G):
         clustered_nodes[label].append(active_nodes[idx])
 
     cluster_heads = []
-    for cluster_id, cluster_members in clustered_nodes.items():
-        if not cluster_members:
-            continue
-
-        ch = max(cluster_members, key=lambda node: G.nodes[node]["energy"])
-        cluster_heads.append(ch)
+    for _, cluster_members in clustered_nodes.items():
+        if cluster_members:
+            ch = max(cluster_members, key=lambda node: G.nodes[node]["energy"])
+            cluster_heads.append(ch)
 
     if not cluster_heads:
         return []
 
-    clusters = {ch: [] for ch in cluster_heads}
+    clusters = assign_nodes_to_cluster_heads(active_nodes, cluster_heads, positions)
 
-    # Assign each alive non-CH node to nearest selected CH
-    for node in active_nodes:
-        if node in cluster_heads:
-            continue
-
-        closest_head = min(
-            cluster_heads,
-            key=lambda ch: euclidean_distance(positions[node], positions[ch])
-        )
-        clusters[closest_head].append(node)
-
-    member_to_ch_energy(clusters, positions, transmission_range, G)
+    member_to_ch_energy(clusters, positions, G)
     ch_receive_and_aggregate_energy(clusters, G)
-    ch_to_bs_energy(cluster_heads, positions, transmission_range, G, base_station=BASE_STATION)
+    ch_to_bs_energy(cluster_heads, positions, G, base_station=BASE_STATION)
 
     return cluster_heads
