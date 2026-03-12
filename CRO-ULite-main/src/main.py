@@ -99,7 +99,7 @@ def run_protocol_comparison(G, positions):
         nodes=list(range(NUM_NODES)),
         protocols=protocols,
         protocol_names=protocol_names,
-        max_rounds=200,
+        max_rounds=1000,
         G=G,
         positions=positions,
         transmission_range=TRANSMISSION_RANGE,
